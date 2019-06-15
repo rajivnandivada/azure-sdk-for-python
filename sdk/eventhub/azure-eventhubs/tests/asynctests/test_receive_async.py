@@ -208,10 +208,9 @@ async def test_multiple_receiver_async(connstr_senders):
     try:
         more_partitions = await client.get_properties()
         assert more_partitions["partition_ids"] == ["0", "1"]
-        outputs = await asyncio.gather(
-            pump(receivers[0]),
-            pump(receivers[1]),
-            return_exceptions=True)
+        outputs = [0, 0]
+        outputs[0] = await pump(receivers[0])
+        outputs[1] = await pump(receivers[1])
         assert isinstance(outputs[0], int) and outputs[0] == 1
         assert isinstance(outputs[1], int) and outputs[1] == 1
     finally:
