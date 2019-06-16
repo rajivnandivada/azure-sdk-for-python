@@ -160,9 +160,9 @@ async def test_receive_batch_async(connstr_senders):
 async def pump(receiver, sleep=None):
     messages = 0
     count = 0
+    batch = await receiver.receive(timeout=10)
     if sleep:
         await asyncio.sleep(sleep)
-    batch = await receiver.receive(timeout=10)
     while batch:
         count += 1
         if count >= 10:
@@ -176,18 +176,19 @@ async def pump(receiver, sleep=None):
 @pytest.mark.asyncio
 async def test_exclusive_receiver_async(connstr_senders):
     connection_str, senders = connstr_senders
-    senders[0].send(EventData(b"Receiving only a single event"))
+    for i in range(11):
+        senders[0].send(EventData(b"Receiving only a single event"))
 
     client = EventHubClient.from_connection_string(connection_str, network_tracing=False)
     receivers = []
     for exclusive_receiver_priority in [10, 20]:
         receivers.append(client.create_receiver(partition_id="0", exclusive_receiver_priority=exclusive_receiver_priority, prefetch=5))
     outputs = await asyncio.gather(
-        pump(receivers[0]),
+        pump(receivers[0], sleep=5),
         pump(receivers[1]),
         return_exceptions=True)
     assert isinstance(outputs[0], EventHubError)  # TODO; it's LinkDetach error
-    assert outputs[1] == 1
+    assert outputs[1] == 11
 
     for r in receivers:
         await r.close()
@@ -222,7 +223,8 @@ async def test_multiple_receiver_async(connstr_senders):
 @pytest.mark.asyncio
 async def test_exclusive_receiver_after_non_exclusive_receiver_async(connstr_senders):
     connection_str, senders = connstr_senders
-    senders[0].send(EventData(b"Receiving only a single event"))
+    for i in range(11):
+        senders[0].send(EventData(b"Receiving only a single event"))
 
     client = EventHubClient.from_connection_string(connection_str, network_tracing=False)
     receivers = []
@@ -230,11 +232,11 @@ async def test_exclusive_receiver_after_non_exclusive_receiver_async(connstr_sen
     receivers.append(client.create_receiver(partition_id="0", exclusive_receiver_priority=15, prefetch=10))
     try:
         outputs = await asyncio.gather(
-            pump(receivers[0]),
-            pump(receivers[1], sleep=5),
+            pump(receivers[0], sleep=5),
+            pump(receivers[1]),
             return_exceptions=True)
         assert isinstance(outputs[0], EventHubError)
-        assert isinstance(outputs[1], int) and outputs[1] == 1
+        assert isinstance(outputs[1], int) and outputs[1] == 11
     finally:
         for r in receivers:
             await r.close()
@@ -244,7 +246,8 @@ async def test_exclusive_receiver_after_non_exclusive_receiver_async(connstr_sen
 @pytest.mark.asyncio
 async def test_non_exclusive_receiver_after_exclusive_receiver_async(connstr_senders):
     connection_str, senders = connstr_senders
-    senders[0].send(EventData(b"Receiving only a single event"))
+    for i in range(11):
+        senders[0].send(EventData(b"Receiving only a single event"))
 
     client = EventHubClient.from_connection_string(connection_str, network_tracing=False)
     receivers = []
@@ -252,11 +255,11 @@ async def test_non_exclusive_receiver_after_exclusive_receiver_async(connstr_sen
     receivers.append(client.create_receiver(partition_id="0", prefetch=10))
     try:
         outputs = await asyncio.gather(
-            pump(receivers[0]),
+            pump(receivers[0], 5),
             pump(receivers[1]),
             return_exceptions=True)
         assert isinstance(outputs[1], EventHubError)
-        assert isinstance(outputs[0], int) and outputs[0] == 1
+        assert isinstance(outputs[0], int) and outputs[0] == 11
     finally:
         for r in receivers:
             await r.close()
