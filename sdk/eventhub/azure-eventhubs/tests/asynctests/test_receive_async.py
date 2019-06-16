@@ -9,7 +9,7 @@ import asyncio
 import pytest
 import time
 
-from azure.eventhub import EventData, EventPosition, EventHubError, TransportType
+from azure.eventhub import EventData, EventPosition, EventHubError, TransportType, ConnectionLostError, ConnectError
 from azure.eventhub.aio import EventHubClient
 
 
@@ -160,9 +160,9 @@ async def test_receive_batch_async(connstr_senders):
 async def pump(receiver, sleep=None):
     messages = 0
     count = 0
-    batch = await receiver.receive(timeout=10)
     if sleep:
         await asyncio.sleep(sleep)
+    batch = await receiver.receive(timeout=10)
     while batch:
         count += 1
         if count >= 10:
@@ -176,22 +176,20 @@ async def pump(receiver, sleep=None):
 @pytest.mark.asyncio
 async def test_exclusive_receiver_async(connstr_senders):
     connection_str, senders = connstr_senders
-    for i in range(11):
-        senders[0].send(EventData(b"Receiving only a single event"))
+    senders[0].send(EventData(b"Receiving only a single event"))
 
     client = EventHubClient.from_connection_string(connection_str, network_tracing=False)
-    receivers = []
-    for exclusive_receiver_priority in [10, 20]:
-        receivers.append(client.create_receiver(partition_id="0", exclusive_receiver_priority=exclusive_receiver_priority, prefetch=5))
-    outputs = await asyncio.gather(
-        pump(receivers[0], sleep=5),
-        pump(receivers[1]),
-        return_exceptions=True)
-    assert isinstance(outputs[0], EventHubError)  # TODO; it's LinkDetach error
-    assert outputs[1] == 11
-
-    for r in receivers:
-        await r.close()
+    receiver1 = client.create_receiver(partition_id="0", exclusive_receiver_priority=10, prefetch=5)
+    receiver2 = client.create_receiver(partition_id="0", exclusive_receiver_priority=20, prefetch=10)
+    try:
+        await pump(receiver1)
+        output2 = await pump(receiver2)
+        with pytest.raises(ConnectionLostError):
+            await receiver1.receive(timeout=1)
+        assert output2 == 1
+    finally:
+        await receiver1.close()
+        await receiver2.close()
 
 
 @pytest.mark.liveTest
@@ -223,46 +221,39 @@ async def test_multiple_receiver_async(connstr_senders):
 @pytest.mark.asyncio
 async def test_exclusive_receiver_after_non_exclusive_receiver_async(connstr_senders):
     connection_str, senders = connstr_senders
-    for i in range(11):
-        senders[0].send(EventData(b"Receiving only a single event"))
+    senders[0].send(EventData(b"Receiving only a single event"))
 
     client = EventHubClient.from_connection_string(connection_str, network_tracing=False)
-    receivers = []
-    receivers.append(client.create_receiver(partition_id="0", prefetch=10))
-    receivers.append(client.create_receiver(partition_id="0", exclusive_receiver_priority=15, prefetch=10))
+    receiver1 = client.create_receiver(partition_id="0", prefetch=10)
+    receiver2 = client.create_receiver(partition_id="0", exclusive_receiver_priority=15, prefetch=10)
     try:
-        outputs = await asyncio.gather(
-            pump(receivers[0], sleep=5),
-            pump(receivers[1]),
-            return_exceptions=True)
-        assert isinstance(outputs[0], EventHubError)
-        assert isinstance(outputs[1], int) and outputs[1] == 11
+        await pump(receiver1)
+        output2 = await pump(receiver2)
+        with pytest.raises(ConnectionLostError):
+            await receiver1.receive(timeout=1)
+        assert output2 == 1
     finally:
-        for r in receivers:
-            await r.close()
+        await receiver1.close()
+        await receiver2.close()
 
 
 @pytest.mark.liveTest
 @pytest.mark.asyncio
 async def test_non_exclusive_receiver_after_exclusive_receiver_async(connstr_senders):
     connection_str, senders = connstr_senders
-    for i in range(11):
-        senders[0].send(EventData(b"Receiving only a single event"))
+    senders[0].send(EventData(b"Receiving only a single event"))
 
     client = EventHubClient.from_connection_string(connection_str, network_tracing=False)
-    receivers = []
-    receivers.append(client.create_receiver(partition_id="0", exclusive_receiver_priority=15, prefetch=10))
-    receivers.append(client.create_receiver(partition_id="0", prefetch=10))
+    receiver1 = client.create_receiver(partition_id="0", exclusive_receiver_priority=15, prefetch=10)
+    receiver2 = client.create_receiver(partition_id="0", prefetch=10)
     try:
-        outputs = await asyncio.gather(
-            pump(receivers[0], 5),
-            pump(receivers[1]),
-            return_exceptions=True)
-        assert isinstance(outputs[1], EventHubError)
-        assert isinstance(outputs[0], int) and outputs[0] == 11
+        output1 = await pump(receiver1)
+        with pytest.raises(ConnectError):
+            await pump(receiver2)
+        assert output1 == 1
     finally:
-        for r in receivers:
-            await r.close()
+        await receiver1.close()
+        await receiver2.close()
 
 
 @pytest.mark.liveTest
