@@ -7,7 +7,6 @@ Release History
 ----------------------------
 
 - Added more configuration parameters when creating EventHubClient.
-- New APIs for creating EventSender/EventReceiver.
 - New error hierarchy
 
  - `azure.error.EventHubError`
@@ -17,6 +16,7 @@ Release History
  - `azure.error.EventDataError`
  - `azure.error.EventDataSendError`
 
+- Renamed Sender/Receiver to EventSender/EventReceiver New APIs for creating EventSender/EventReceiver.
 - Rename class azure.eventhub.Offset to azure.eventhub.EventPosition
 - Reorganzied connection management, EventHubClient is no longer responsible for opening/closing EventSender/EventReceiver.
 
@@ -24,8 +24,8 @@ Release History
  - Added support for context manager on EventSender and EventReceiver.
 
 - Reorganized async APIs into "azure.eventhub.aio" namespace and rename to drop the "_async" suffix.
-- Added ability to iterate on Receiver object. Receiver now implements the iterator interface.
-- Added support for authentication using aad credential.
+- EventReceiver is now iteratable.
+- Added support for authentication using azure-core credential.
 - Added support for transport using AMQP over Websocket.
 - Updated uAMQP dependency to 1.2.0
 
