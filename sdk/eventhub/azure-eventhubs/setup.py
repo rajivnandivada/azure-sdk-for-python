@@ -39,7 +39,6 @@ exclude_packages = [
         'tests',
         "tests.asynctests",
         'examples',
-        'perf',
         # Exclude packages that will be covered by PEP420 or nspkg
         'azure',
     ]
