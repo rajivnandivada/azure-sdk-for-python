@@ -7,7 +7,7 @@ Use the Event Hubs client library for Python to:
 - Publish events to the Event Hubs service through a sender.
 - Read events from the Event Hubs service through a receiver.
 
-On Python 3.5 and above, it also includes:
+On Python 3.5.3 and above, it also includes:
 
 - An async sender and receiver that supports async/await methods.
 - An Event Processor Host module that manages the distribution of partition readers.
@@ -27,7 +27,7 @@ $ pip install azure-eventhub
 ### Prerequisites
 
 - An Azure subscription.
-- Python 3.5 or later.
+- Python 2.7, 3.5 or later.
 - An existing Event Hubs namespace and event hub. You can create these entities by following the instructions in [this article](https://docs.microsoft.com/en-us/azure/event-hubs/event-hubs-create)
 
 ## Authenticate the client
@@ -80,8 +80,14 @@ The following sections provide several code snippets covering some of the most c
 Sends an event data and blocks until acknowledgement is received or operation times out.
 
 ```python
+import os
 from azure.eventhub import EventHubClient, EventData
 
+connection_str = "Endpoint=sb://{}/;SharedAccessKeyName={};SharedAccessKey={};EntityPath={}".format(
+    os.environ['EVENT_HUB_HOSTNAME'],
+    os.environ['EVENT_HUB_SAS_POLICY'],
+    os.environ['EVENT_HUB_SAS_KEY'],
+    os.environ['EVENT_HUB_NAME'])
 client = EventHubClient.from_connection_string(connection_str)
 sender = client.create_sender(partition_id="0")
 
@@ -91,7 +97,7 @@ try:
  		event_list.append(EventData(b"A single event"))
 
  	with sender:
-    	sender.send(event_list)
+ 	    sender.send(event_list)
 except:
 	raise
 finally:
@@ -103,8 +109,15 @@ finally:
 Receive events from the EventHub.
 
 ```python
+import os
+import logging
 from azure.eventhub import EventHubClient, EventData, EventPosition
 
+connection_str = "Endpoint=sb://{}/;SharedAccessKeyName={};SharedAccessKey={};EntityPath={}".format(
+    os.environ['EVENT_HUB_HOSTNAME'],
+    os.environ['EVENT_HUB_SAS_POLICY'],
+    os.environ['EVENT_HUB_SAS_KEY'],
+    os.environ['EVENT_HUB_NAME'])
 client = EventHubClient.from_connection_string(connection_str)
 receiver = client.create_receiver(partition_id="0", consumer_group="$default", event_position=EventPosition.new_events_only())
 
@@ -125,9 +138,15 @@ finally:
 Sends an event data and asynchronously.
 
 ```python
+import os
 from azure.eventhub.aio import EventHubClient
 from azure.eventhub import EventData
 
+connection_str = "Endpoint=sb://{}/;SharedAccessKeyName={};SharedAccessKey={};EntityPath={}".format(
+    os.environ['EVENT_HUB_HOSTNAME'],
+    os.environ['EVENT_HUB_SAS_POLICY'],
+    os.environ['EVENT_HUB_SAS_KEY'],
+    os.environ['EVENT_HUB_NAME'])
 client = EventHubClient.from_connection_string(connection_str)
 sender = client.create_sender(partition_id="0")
 
@@ -137,7 +156,7 @@ try:
  		event_list.append(EventData(b"A single event"))
 
 	async with sender:
-		await sender.send(EventData(b"A single event"))
+		await sender.send(event_list)
 except:
 	raise
 finally:
@@ -149,16 +168,23 @@ finally:
 Receive events asynchronously from the EventHub.
 
 ```python
+import os
+import logging
 from azure.eventhub.aio import EventHubClient
 from azure.eventhub import EventData, EventPosition
 
+connection_str = "Endpoint=sb://{}/;SharedAccessKeyName={};SharedAccessKey={};EntityPath={}".format(
+    os.environ['EVENT_HUB_HOSTNAME'],
+    os.environ['EVENT_HUB_SAS_POLICY'],
+    os.environ['EVENT_HUB_SAS_KEY'],
+    os.environ['EVENT_HUB_NAME'])
 client = EventHubClient.from_connection_string(connection_str)
 receiver = client.create_receiver(partition_id="0", consumer_group="$default", event_position=EventPosition.new_events_only())
 
 try:
     logger = logging.getLogger("azure.eventhub")
     async with receiver:
-        received = await eceiver.receive(max_batch_size=100, timeout=5)
+        received = await receiver.receive(max_batch_size=100, timeout=5)
         for event_data in received:
             logger.info("Message received:{}".format(event_data.body_as_str()))
 except:
@@ -171,14 +197,15 @@ finally:
 
 ## General
 
-The Event Hubs APIs generate exceptions that can fall into the following categories, along with the associated action you can take to try to fix them.
+The Event Hubs APIs generate the following exceptions.
 
-- **User coding error:** System.ArgumentException, System.InvalidOperationException, System.OperationCanceledException, System.Runtime.Serialization.SerializationException. General action: try to fix the code before proceeding.
-- **Setup/configuration error:** Microsoft.ServiceBus.Messaging.MessagingEntityNotFoundException, Microsoft.Azure.EventHubs.MessagingEntityNotFoundException, System.UnauthorizedAccessException. General action: review your configuration and change if necessary.
-- **Transient exceptions:** Microsoft.ServiceBus.Messaging.MessagingException, Microsoft.ServiceBus.Messaging.ServerBusyException, Microsoft.Azure.EventHubs.ServerBusyException, Microsoft.ServiceBus.Messaging.MessagingCommunicationException. General action: retry the operation or notify users.
-- **Other exceptions:** System.Transactions.TransactionException, System.TimeoutException, Microsoft.ServiceBus.Messaging.MessageLockLostException, Microsoft.ServiceBus.Messaging.SessionLockLostException. General action: specific to the exception type, refer to the table in [Event Hubs messaging exceptions](https://docs.microsoft.com/en-ca/azure/event-hubs/event-hubs-messaging-exceptions).
-
-For more detailed infromation about excpetions and how to deal with them , see [Event Hubs messaging exceptions](https://docs.microsoft.com/en-ca/azure/event-hubs/event-hubs-messaging-exceptions).
+- **AuthenticationError:** Failed to authenticate because of wrong address, SAS policy/key pair, SAS token or azure identity.
+- **ConnectError:** Failed to connect to the EventHubs. The AuthenticationError is a type of ConnectError.
+- **ConnectionLostError:** Lose connection after a connection has been built.
+- **EventDataError:** The EventData to be sent fails data validation. 
+For instance, this error is raised if you try to send an EventData that is already sent.
+- **EventDataSendError:** The Eventhubs service responds with an error when an EventData is sent.
+- **EventHubError:** All other Eventhubs related errors. It is also the root error class of all the above mentioned errors.
 
 # Next steps
 
