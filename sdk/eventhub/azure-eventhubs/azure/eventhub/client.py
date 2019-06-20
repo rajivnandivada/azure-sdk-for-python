@@ -6,27 +6,22 @@ from __future__ import unicode_literals
 
 import logging
 import datetime
-import sys
-import uuid
-import time
 import functools
 try:
     from urlparse import urlparse
     from urllib import unquote_plus, urlencode, quote_plus
 except ImportError:
     from urllib.parse import urlparse, unquote_plus, urlencode, quote_plus
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Union
 
 import uamqp
 from uamqp import Message, AMQPClient
 from uamqp import authentication
 from uamqp import constants
 
-from azure.eventhub import __version__
 from azure.eventhub.sender import EventHubProducer
 from azure.eventhub.receiver import EventHubConsumer
 from azure.eventhub.common import parse_sas_token, EventPosition
-from azure.eventhub.error import EventHubError
 from .client_abstract import EventHubClientAbstract
 from .common import EventHubSASTokenCredential, EventHubSharedKeyCredential
 
@@ -111,7 +106,7 @@ class EventHubClient(EventHubClientAbstract):
             "password": self._auth_config.get("iot_password")}
         try:
             mgmt_auth = self._create_auth(**alt_creds)
-            mgmt_client = uamqp.AMQPClient(self.mgmt_target, auth=mgmt_auth, debug=self.debug)
+            mgmt_client = uamqp.AMQPClient(self.mgmt_target, auth=mgmt_auth, debug=self.config.network_tracing)
             mgmt_client.open()
             mgmt_msg = Message(application_properties={'name': self.eh_name})
             response = mgmt_client.mgmt_request(
@@ -140,7 +135,7 @@ class EventHubClient(EventHubClientAbstract):
         return self.get_properties()['partition_ids']
 
     def get_partition_properties(self, partition):
-        # type:(str) -> Dict[str, str]
+        # type:(str) -> Dict[str, Any]
         """
         Get properties of the specified partition.
         Keys in the details dictionary include:
@@ -193,7 +188,7 @@ class EventHubClient(EventHubClientAbstract):
     ):
         # type: (str, str, EventPosition, int, str, int) -> EventHubConsumer
         """
-        Create a receiver to the client for a particular consumer group and partition.
+        Create a consumer to the client for a particular consumer group and partition.
 
         :param consumer_group: The name of the consumer group. Default value is `$Default`.
         :type consumer_group: str
@@ -201,13 +196,13 @@ class EventHubClient(EventHubClientAbstract):
         :type partition_id: str
         :param event_position: The position from which to start receiving.
         :type event_position: ~azure.eventhub.common.EventPosition
-        :param owner_level: The priority of the exclusive receiver. The client will create an exclusive
-         receiver if owner_level is set.
+        :param owner_level: The priority of the exclusive consumer. The client will create an exclusive
+         consumer if owner_level is set.
         :type owner_level: int
         :param operation: An optional operation to be appended to the hostname in the source URL.
          The value must start with `/` character.
         :type operation: str
-        :param prefetch: The message prefetch count of the receiver. Default is 300.
+        :param prefetch: The message prefetch count of the consumer. Default is 300.
         :type prefetch: int
         :rtype: ~azure.eventhub.receiver.EventHubConsumer
 
@@ -217,7 +212,7 @@ class EventHubClient(EventHubClientAbstract):
                 :end-before: [END create_eventhub_client_receiver]
                 :language: python
                 :dedent: 4
-                :caption: Add a receiver to the client for a particular consumer group and partition.
+                :caption: Add a consumer to the client for a particular consumer group and partition.
 
         """
         prefetch = self.config.prefetch if prefetch is None else prefetch
@@ -253,7 +248,7 @@ class EventHubClient(EventHubClientAbstract):
                 :end-before: [END create_eventhub_client_sender]
                 :language: python
                 :dedent: 4
-                :caption: Add a sender to the client to send EventData object to an EventHub.
+                :caption: Add a producer to the client to send EventData object to an EventHub.
 
         """
         target = "amqps://{}{}".format(self.address.hostname, self.address.path)

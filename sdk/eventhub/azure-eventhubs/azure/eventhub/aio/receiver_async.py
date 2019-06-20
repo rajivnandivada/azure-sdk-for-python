@@ -6,11 +6,12 @@
 import asyncio
 import uuid
 import logging
+from typing import List
 
 from uamqp import errors, types, compat
 from uamqp import ReceiveClientAsync, Source
 
-from azure.eventhub import EventHubError, EventData
+from azure.eventhub import EventData
 from azure.eventhub.error import EventHubError, AuthenticationError, ConnectError, ConnectionLostError, _error_handler
 
 log = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ class EventHubConsumer(object):
             self, client, source, event_position=None, prefetch=300, owner_level=None,
             keep_alive=None, auto_reconnect=True, loop=None):
         """
-        Instantiate an async receiver.
+        Instantiate an async consumer.
 
         :param client: The parent EventHubClientAsync.
         :type client: ~azure.eventhub.aio.EventHubClientAsync
@@ -39,8 +40,8 @@ class EventHubConsumer(object):
         :param prefetch: The number of events to prefetch from the service
          for processing. Default is 300.
         :type prefetch: int
-        :param owner_level: The priority of the exclusive receiver. It will an exclusive
-         receiver if owner_level is set.
+        :param owner_level: The priority of the exclusive consumer. It will an exclusive
+         consumer if owner_level is set.
         :type owner_level: int
         :param loop: An event loop.
         """
@@ -155,7 +156,7 @@ class EventHubConsumer(object):
 
     def _check_closed(self):
         if self.error:
-            raise EventHubError("This receiver has been closed. Please create a new receiver to receive event data.",
+            raise EventHubError("This consumer has been closed. Please create a new consumer to receive event data.",
                                 self.error)
     async def _open(self):
         """
@@ -282,6 +283,7 @@ class EventHubConsumer(object):
         return await self._build_connection(is_reconnect=True)
 
     async def close(self, exception=None):
+        # type: (Exception) -> None
         """
         Close down the handler. If the handler has already closed,
         this will be a no op. An optional exception can be passed in to
@@ -317,6 +319,7 @@ class EventHubConsumer(object):
 
     @property
     def queue_size(self):
+        # type: () -> int
         """
         The current size of the unprocessed Event queue.
 
@@ -328,6 +331,7 @@ class EventHubConsumer(object):
         return 0
 
     async def receive(self, max_batch_size=None, timeout=None):
+        # type: (int, float) -> List[EventData]
         """
         Receive events asynchronously from the EventHub.
 

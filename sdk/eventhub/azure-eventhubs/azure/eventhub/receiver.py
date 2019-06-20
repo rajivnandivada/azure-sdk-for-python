@@ -7,6 +7,7 @@ from __future__ import unicode_literals
 import uuid
 import logging
 import time
+from typing import List
 
 from uamqp import types, errors
 from uamqp import compat
@@ -30,7 +31,7 @@ class EventHubConsumer(object):
     def __init__(self, client, source, event_position=None, prefetch=300, owner_level=None,
                  keep_alive=None, auto_reconnect=True):
         """
-        Instantiate a receiver.
+        Instantiate a consumer.
 
         :param client: The parent EventHubClient.
         :type client: ~azure.eventhub.client.EventHubClient
@@ -39,8 +40,8 @@ class EventHubConsumer(object):
         :param prefetch: The number of events to prefetch from the service
          for processing. Default is 300.
         :type prefetch: int
-        :param owner_level: The priority of the exclusive receiver. It will an exclusive
-         receiver if owner_level is set.
+        :param owner_level: The priority of the exclusive consumer. It will an exclusive
+         consumer if owner_level is set.
         :type owner_level: int
         """
         self.running = False
@@ -157,7 +158,7 @@ class EventHubConsumer(object):
 
     def _check_closed(self):
         if self.error:
-            raise EventHubError("This receiver has been closed. Please create a new receiver to receive event data.",
+            raise EventHubError("This consumer has been closed. Please create a new consumer to receive event data.",
                                 self.error)
 
     def _redirect(self, redirect):
@@ -299,6 +300,7 @@ class EventHubConsumer(object):
         return self._build_connection(is_reconnect=True)
 
     def close(self, exception=None):
+        # type:(Exception) -> None
         """
         Close down the handler. If the handler has already closed,
         this will be a no op. An optional exception can be passed in to
@@ -335,6 +337,7 @@ class EventHubConsumer(object):
 
     @property
     def queue_size(self):
+        # type:() -> int
         """
         The current size of the unprocessed Event queue.
 
@@ -346,6 +349,7 @@ class EventHubConsumer(object):
         return 0
 
     def receive(self, max_batch_size=None, timeout=None):
+        # type:(int, float) -> List[EventData]
         """
         Receive events from the EventHub.
 
@@ -377,7 +381,7 @@ class EventHubConsumer(object):
         max_batch_size = min(self.client.config.max_batch_size, self.prefetch) if max_batch_size is None else max_batch_size
         timeout = self.client.config.receive_timeout if timeout is None else timeout
 
-        data_batch = []
+        data_batch = []  # type: List[EventData]
         max_retries = self.client.config.max_retries
         connecting_count = 0
         while True:
