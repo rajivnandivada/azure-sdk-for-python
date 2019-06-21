@@ -27,11 +27,10 @@ if TYPE_CHECKING:
 
 from azure.eventhub import __version__
 from azure.eventhub.configuration import Configuration
-from azure.eventhub import constants
 from .common import EventHubSharedKeyCredential, EventHubSASTokenCredential, _Address
 
 log = logging.getLogger(__name__)
-
+MAX_USER_AGENT_LENGTH = 512
 
 def _parse_conn_str(conn_str):
     endpoint = None
@@ -99,7 +98,7 @@ class EventHubClientAbstract(object):
         """
         Constructs a new EventHubClient.
 
-        :param host: The hostname URI string of the the Event Hub.
+        :param host: The hostname of the the Event Hub.
         :type host: str
         :param event_hub_path: The path/name of the Event Hub
         :type event_hub_path: str
@@ -116,7 +115,7 @@ class EventHubClientAbstract(object):
         :type http_proxy: dict[str, Any]
         :param auth_timeout: The time in seconds to wait for a token to be authorized by the service.
          The default value is 60 seconds. If set to 0, no timeout will be enforced from the client.
-        :type auth_timeout: int
+        :type auth_timeout: float
         :param user_agent: The user agent that needs to be appended to the built in user agent string.
         :type user_agent: str
         :param max_retries: The max number of attempts to redo the failed operation when an error happened. Default
@@ -133,10 +132,10 @@ class EventHubClientAbstract(object):
         :type max_batch_size: int
         :param receive_timeout: The timeout time in seconds to receive a batch of events from an Event Hub.
          Default value is 0 seconds.
-        :type receive_timeout: int
+        :type receive_timeout: float
         :param send_timeout: The timeout in seconds for an individual event to be sent from the time that it is
          queued. Default value is 60 seconds. If set to 0, there will be no timeout.
-        :type send_timeout: int
+        :type send_timeout: float
         """
         self.container_id = "eventhub.pysdk-" + str(uuid.uuid4())[:8]
         self.address = _Address()
@@ -211,17 +210,21 @@ class EventHubClientAbstract(object):
                 :caption: Create an EventHubClient from a connection string.
 
         """
-        address, policy, key, entity = _parse_conn_str(conn_str)
-        entity = event_hub_path or entity
-        left_slash_pos = address.find("//")
-        if left_slash_pos != -1:
-            host = address[left_slash_pos + 2:]
+        is_iot_conn_str = conn_str.lstrip().lower().startswith("hostname")
+        if not is_iot_conn_str:
+            address, policy, key, entity = _parse_conn_str(conn_str)
+            entity = event_hub_path or entity
+            left_slash_pos = address.find("//")
+            if left_slash_pos != -1:
+                host = address[left_slash_pos + 2:]
+            else:
+                host = address
+            return cls(host, entity, EventHubSharedKeyCredential(policy, key), **kwargs)
         else:
-            host = address
-        return cls(host, entity, EventHubSharedKeyCredential(policy, key), **kwargs)
+            return cls._from_iothub_connection_string(conn_str, **kwargs)
 
     @classmethod
-    def from_iothub_connection_string(cls, conn_str, **kwargs):
+    def _from_iothub_connection_string(cls, conn_str, **kwargs):
         """
         Create an EventHubClient from an IoTHub connection string.
 
@@ -306,10 +309,10 @@ class EventHubClientAbstract(object):
         if user_agent:
             final_user_agent = '{}, {}'.format(final_user_agent, user_agent)
 
-        if len(final_user_agent) > constants.MAX_USER_AGENT_LENGTH:
+        if len(final_user_agent) > MAX_USER_AGENT_LENGTH:
             raise ValueError("The user-agent string cannot be more than {} in length."
                              "Current user_agent string is: {} with length: {}".format(
-                                constants.MAX_USER_AGENT_LENGTH, final_user_agent, len(final_user_agent)))
+                                MAX_USER_AGENT_LENGTH, final_user_agent, len(final_user_agent)))
 
         properties["user-agent"] = final_user_agent
         return properties

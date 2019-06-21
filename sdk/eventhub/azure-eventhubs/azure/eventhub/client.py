@@ -19,8 +19,8 @@ from uamqp import Message, AMQPClient
 from uamqp import authentication
 from uamqp import constants
 
-from azure.eventhub.sender import EventHubProducer
-from azure.eventhub.receiver import EventHubConsumer
+from azure.eventhub.producer import EventHubProducer
+from azure.eventhub.consumer import EventHubConsumer
 from azure.eventhub.common import parse_sas_token, EventPosition
 from .client_abstract import EventHubClientAbstract
 from .common import EventHubSASTokenCredential, EventHubSharedKeyCredential
@@ -239,7 +239,7 @@ class EventHubClient(EventHubClientAbstract):
         :type operation: str
         :param send_timeout: The timeout in seconds for an individual event to be sent from the time that it is
          queued. Default value is 60 seconds. If set to 0, there will be no timeout.
-        :type send_timeout: int
+        :type send_timeout: float
         :rtype: ~azure.eventhub.sender.EventHubProducer
 
         Example:
