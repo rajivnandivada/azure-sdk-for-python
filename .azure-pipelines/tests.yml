@@ -20,6 +20,12 @@ jobs:
           OSName: 'Windows'
           OSVmImage: 'vs2017-win2016'
           PythonVersion: '2.7'
+
+#        Windows_Pypy3:
+#          OSName: 'Windows'
+#          OSVmImage: 'vs2017-win2016'
+#          PythonVersion: 'pypy3'
+
       maxParallel: 1
     continueOnError: false
 
@@ -72,6 +78,9 @@ jobs:
           EVENT_HUB_NAMESPACE: $(python-eh-livetest-event-hub-namespace)
           IOTHUB_CONNECTION_STR: $(python-eh-livetest-event-hub-iothub-connection-str)
           IOTHUB_DEVICE: $(python-eh-livetest-event-hub-iothub-device)
+          AAD_CLIENT_ID: $(python-eh-livetest-event-hub-aad-client-id)
+          AAD_TENANT_ID: $(python-eh-livetest-event-hub-aad-tenant-id)
+          AAD_SECRET: $(python-eh-livetest-event-hub-aad-secret)
 
       - task: PublishTestResults@2
         condition: succeededOrFailed()
