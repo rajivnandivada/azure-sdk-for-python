@@ -12,16 +12,19 @@ try:
     from urllib import unquote_plus, urlencode, quote_plus
 except ImportError:
     from urllib.parse import urlparse, unquote_plus, urlencode, quote_plus
-from typing import Any, List, Dict, Union
+from typing import Any, List, Dict
 
 import uamqp
-from uamqp import Message, AMQPClient
+from uamqp import Message
 from uamqp import authentication
 from uamqp import constants
+from uamqp import errors
+from uamqp import compat
 
 from azure.eventhub.producer import EventHubProducer
 from azure.eventhub.consumer import EventHubConsumer
 from azure.eventhub.common import parse_sas_token, EventPosition
+from azure.eventhub.error import ConnectError
 from .client_abstract import EventHubClientAbstract
 from .common import EventHubSASTokenCredential, EventHubSharedKeyCredential
 
@@ -89,6 +92,36 @@ class EventHubClient(EventHubClientAbstract):
                                                get_jwt_token, http_proxy=http_proxy,
                                                transport_type=transport_type)
 
+    def _management_request(self, mgmt_msg, op_type):
+        alt_creds = {
+            "username": self._auth_config.get("iot_username"),
+            "password": self._auth_config.get("iot_password")}
+        connect_count = 0
+        while True:
+            connect_count += 1
+            mgmt_auth = self._create_auth(**alt_creds)
+            mgmt_client = uamqp.AMQPClient(self.mgmt_target, auth=mgmt_auth, debug=self.config.network_tracing)
+            try:
+                mgmt_client.open()
+                response = mgmt_client.mgmt_request(
+                    mgmt_msg,
+                    constants.READ_OPERATION,
+                    op_type=op_type,
+                    status_code_field=b'status-code',
+                    description_fields=b'status-description')
+                return response
+            except (errors.AMQPConnectionError, errors.TokenAuthFailure, compat.TimeoutException) as failure:
+                if connect_count >= self.config.max_retries:
+                    err = ConnectError(
+                        "Can not connect to EventHubs or get management info from the service. "
+                        "Please make sure the connection string or token is correct and retry. "
+                        "Besides, this method doesn't work if you use an IoT connection string.",
+                        failure
+                    )
+                    raise err
+            finally:
+                mgmt_client.close()
+
     def get_properties(self):
         # type:() -> Dict[str, Any]
         """
@@ -100,30 +133,17 @@ class EventHubClient(EventHubClientAbstract):
             -'partition_ids'
 
         :rtype: dict
+        :raises: ~azure.eventhub.ConnectError
         """
-        alt_creds = {
-            "username": self._auth_config.get("iot_username"),
-            "password": self._auth_config.get("iot_password")}
-        try:
-            mgmt_auth = self._create_auth(**alt_creds)
-            mgmt_client = uamqp.AMQPClient(self.mgmt_target, auth=mgmt_auth, debug=self.config.network_tracing)
-            mgmt_client.open()
-            mgmt_msg = Message(application_properties={'name': self.eh_name})
-            response = mgmt_client.mgmt_request(
-                mgmt_msg,
-                constants.READ_OPERATION,
-                op_type=b'com.microsoft:eventhub',
-                status_code_field=b'status-code',
-                description_fields=b'status-description')
-            eh_info = response.get_data()
-            output = {}
-            if eh_info:
-                output['path'] = eh_info[b'name'].decode('utf-8')
-                output['created_at'] = datetime.datetime.utcfromtimestamp(float(eh_info[b'created_at'])/1000)
-                output['partition_ids'] = [p.decode('utf-8') for p in eh_info[b'partition_ids']]
-            return output
-        finally:
-            mgmt_client.close()
+        mgmt_msg = Message(application_properties={'name': self.eh_name})
+        response = self._management_request(mgmt_msg, op_type=b'com.microsoft:eventhub')
+        output = {}
+        eh_info = response.get_data()
+        if eh_info:
+            output['path'] = eh_info[b'name'].decode('utf-8')
+            output['created_at'] = datetime.datetime.utcfromtimestamp(float(eh_info[b'created_at']) / 1000)
+            output['partition_ids'] = [p.decode('utf-8') for p in eh_info[b'partition_ids']]
+        return output
 
     def get_partition_ids(self):
         # type:() -> List[str]
@@ -131,6 +151,7 @@ class EventHubClient(EventHubClientAbstract):
         Get partition ids of the specified EventHub.
 
         :rtype: list[str]
+        :raises: ~azure.eventhub.ConnectError
         """
         return self.get_properties()['partition_ids']
 
@@ -151,36 +172,23 @@ class EventHubClient(EventHubClientAbstract):
         :param partition: The target partition id.
         :type partition: str
         :rtype: dict
+        :raises: ~azure.eventhub.ConnectError
         """
-        alt_creds = {
-            "username": self._auth_config.get("iot_username"),
-            "password": self._auth_config.get("iot_password")}
-        try:
-            mgmt_auth = self._create_auth(**alt_creds)
-            mgmt_client = AMQPClient(self.mgmt_target, auth=mgmt_auth, debug=self.debug)
-            mgmt_client.open()
-            mgmt_msg = Message(application_properties={'name': self.eh_name,
-                                                       'partition': partition})
-            response = mgmt_client.mgmt_request(
-                mgmt_msg,
-                constants.READ_OPERATION,
-                op_type=b'com.microsoft:partition',
-                status_code_field=b'status-code',
-                description_fields=b'status-description')
-            partition_info = response.get_data()
-            output = {}
-            if partition_info:
-                output['event_hub_path'] = partition_info[b'name'].decode('utf-8')
-                output['id'] = partition_info[b'partition'].decode('utf-8')
-                output['beginning_sequence_number'] = partition_info[b'begin_sequence_number']
-                output['last_enqueued_sequence_number'] = partition_info[b'last_enqueued_sequence_number']
-                output['last_enqueued_offset'] = partition_info[b'last_enqueued_offset'].decode('utf-8')
-                output['last_enqueued_time_utc'] = datetime.datetime.utcfromtimestamp(
-                    float(partition_info[b'last_enqueued_time_utc'] / 1000))
-                output['is_empty'] = partition_info[b'is_partition_empty']
-            return output
-        finally:
-            mgmt_client.close()
+        mgmt_msg = Message(application_properties={'name': self.eh_name,
+                                                   'partition': partition})
+        response = self._management_request(mgmt_msg, op_type=b'com.microsoft:partition')
+        partition_info = response.get_data()
+        output = {}
+        if partition_info:
+            output['event_hub_path'] = partition_info[b'name'].decode('utf-8')
+            output['id'] = partition_info[b'partition'].decode('utf-8')
+            output['beginning_sequence_number'] = partition_info[b'begin_sequence_number']
+            output['last_enqueued_sequence_number'] = partition_info[b'last_enqueued_sequence_number']
+            output['last_enqueued_offset'] = partition_info[b'last_enqueued_offset'].decode('utf-8')
+            output['last_enqueued_time_utc'] = datetime.datetime.utcfromtimestamp(
+                float(partition_info[b'last_enqueued_time_utc'] / 1000))
+            output['is_empty'] = partition_info[b'is_partition_empty']
+        return output
 
     def create_consumer(
             self, consumer_group, partition_id, event_position,
@@ -190,11 +198,12 @@ class EventHubClient(EventHubClientAbstract):
         """
         Create a consumer to the client for a particular consumer group and partition.
 
-        :param consumer_group: The name of the consumer group. Default value is `$Default`.
+        :param consumer_group: The name of the consumer group this consumer is associated with.
+         Events are read in the context of this group. The default consumer_group for an event hub is "$Default".
         :type consumer_group: str
-        :param partition_id: The ID of the partition.
+        :param partition_id: The identifier of the Event Hub partition from which events will be received.
         :type partition_id: str
-        :param event_position: The position from which to start receiving.
+        :param event_position: The position within the partition where the consumer should begin reading events.
         :type event_position: ~azure.eventhub.common.EventPosition
         :param owner_level: The priority of the exclusive consumer. The client will create an exclusive
          consumer if owner_level is set.
@@ -228,7 +237,7 @@ class EventHubClient(EventHubClientAbstract):
     def create_producer(self, partition_id=None, operation=None, send_timeout=None):
         # type: (str, str, float) -> EventHubProducer
         """
-        Create a EventHubProducer to send EventData object to an EventHub.
+        Create an producer to send EventData object to an EventHub.
 
         :param partition_id: Optionally specify a particular partition to send to.
          If omitted, the events will be distributed to available partitions via
@@ -248,7 +257,7 @@ class EventHubClient(EventHubClientAbstract):
                 :end-before: [END create_eventhub_client_sender]
                 :language: python
                 :dedent: 4
-                :caption: Add a producer to the client to send EventData object to an EventHub.
+                :caption: Add a producer to the client to send EventData.
 
         """
         target = "amqps://{}{}".format(self.address.hostname, self.address.path)

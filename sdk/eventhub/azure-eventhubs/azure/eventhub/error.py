@@ -2,9 +2,10 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for license information.
 # --------------------------------------------------------------------------------------------
-
-from uamqp import types, constants, errors
 import six
+
+from uamqp import constants, errors
+
 from azure.core.exceptions import AzureError
 
 _NO_RETRY_ERRORS = (
@@ -57,8 +58,6 @@ class EventHubError(AzureError):
         self.error = None
         self.message = message
         self.details = details
-        if isinstance(message, constants.MessageSendResult):
-            self.message = "Message send failed with result: {}".format(message)
         if details and isinstance(details, Exception):
             try:
                 condition = details.condition.value.decode('UTF-8')
@@ -130,12 +129,3 @@ class EventDataSendError(EventHubError):
 
     """
     pass
-
-'''
-class ConnectionTimeoutError(ConnectError):
-    """Time out when accessing event hub service
-    Should retry?
-
-    """
-'''
-
